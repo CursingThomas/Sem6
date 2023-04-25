@@ -1,11 +1,16 @@
 #include <Arduino.h>
+#include <Temperature/ITemperature.h>
 
+ITemperature x;
 
-
-void setup() {
-  // put your setup code here, to run once:
+void setup() 
+{
+  Serial.begin(9600);
 }
 
-void loop() {
-  // put your main code here, to run repeatedly:
+void loop() 
+{
+  x.getTemperature();
+  Serial.println(12);
+  delay(100);
 }
