@@ -1,0 +1,5 @@
+<launch>
+<include file="$(find rosbridge_server)/launch/rosbridge_websocket.launch"/>
+<node name="video" pkg="web_video_server" type="web_video_server" output="screen"></node>
+<node name="server" pkg="autonomous_exploration" type="launchserver.bash" output="screen"></node>
+</launch>

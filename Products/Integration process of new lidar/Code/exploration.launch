@@ -1,0 +1,163 @@
+<!-- ROS launch file for autonomous building exploration using several robot configurations described below. -->
+<launch>
+    <!-- Gets current time at launch execution and formats it as string. Absolute life saver: https://alspitz.github.io/blog/roslaunch_import.html -->
+    <arg name="time_now"                default="$(eval eval ('_' + '_import_' + '_(\'datetime\')').datetime.now().strftime('%Y-%m-%d-%H-%M-%S'))"/>
+    <arg name="rosbag_dir"              default="$(env HOME)/rosbags"/>                 <!-- Location to save rosbag recording -->
+    <arg name="rtabmap_db_dir"          default="$(env HOME)/exploration_databases"/>   <!-- Location to save rtabmap.db file created by RTAB-Map -->
+
+    <arg name="use_rosbag"              value="false"/>                                 <!-- Turn rosbag saving on/off -->
+    <arg name="use_object_detection"    value="true"/>                                 <!-- Turn object detection on/off -->
+    <arg name="slam_method"             value="rtabmap"/>                               <!-- SLAM method to be used (for testing purposes); "rtabmap" / "gmapping" -->
+
+    <!--
+        Valid robot_config values (default value can be changed for easy launch command; more configurations can be added if needed):
+        - jackal_astra_rplidar:    Clearpath Jackal robot with front-mounted Orbbec Astra Pro camera and RPLIDAR-A1 2D laser scanner.
+        - jackal_astra_velodyne:   Clearpath Jackal robot with front-mounted Orbbec Astra Pro camera and Velodyne VLP-16 3D LiDAR.
+    -->
+    <arg name="robot_config"            value="jackal_astra_velodyne"/>
+
+    <!-- Record all topic communication for later playback (in compressed form)-->
+    <node if="$(arg use_rosbag)" pkg="rosbag" type="record" name="rosbag_record" output="screen"
+        args="-a -b 0 --lz4 -O $(arg rosbag_dir)/exploration_$(arg time_now).bag">
+        <param name="mkdir_tmp" command="mkdir -m 777 -p $(arg rosbag_dir)"/> <!-- Ensures rosbag_dir is available -->
+    </node>
+
+    <group if="$(eval arg('robot_config') == 'jackal_astra_rplidar')">
+        <!-- Sensors -->
+        <!--<include file="$(find astra_camera)/launch/astra_pro.launch"/>  Launch Orbbec Astra Pro camera -->
+        <include file="$(find realsense2_camera)/launch/rs_camera.launch"/>
+        <include file="$(find rplidar_ros)/launch/rplidar.launch"/>     <!-- Launch RPLidar laser scanner -->
+
+        <!-- Transform links -->
+        <!-- TF links between Jackal front mount point and camera/scanner tf trees. Placed using CAD model info; camera tilted up by 5 deg (in radians) -->
+        <node pkg="tf" type="static_transform_publisher" name="front_mount_camera_link_tf" args="0.037 0 0.05125 0 -0.0872665 0 front_mount camera_link 100"/>
+        <node pkg="tf" type="static_transform_publisher" name="front_mount_laser_tf"       args="0 0 0.1328 0 0 0 front_mount laser 100"/>
+
+        <!-- SLAM -->
+        <include if="$(eval arg('slam_method') == 'gmapping')" file="$(find jackal_navigation)/launch/gmapping_demo.launch">
+            <arg name="scan_topic" value="/scan"/>
+        </include>
+
+        <group if="$(eval arg('slam_method') == 'rtabmap')" ns="rtabmap"> <!-- Launch RTAB-Map with some custom parameters and remapped topics -->
+            <node pkg="rtabmap_ros" type="rtabmap" name="rtabmap" output="screen" args="--delete_db_on_start">
+                <!-- Miscellaneous -->
+                <param name="database_path"   value="$(arg rtabmap_db_dir)/exploration_$(arg time_now).db"/>    <!-- Recording filepath -->
+                <param name="mkdir_tmp"       command="mkdir -m 777 -p $(arg rtabmap_db_dir)"/>                 <!-- Ensures rtabmap_db_dir is available -->
+                
+                <!-- Frame and odometry parameters -->
+                <param name="frame_id"                 type="string" value="base_link"/>    <!-- Origin tf frame for RTABmap -->
+                <param name="odom_frame_id"            type="string" value="odom"/>         <!-- Get odometry updates directly from odom tf -->
+                <param name="odom_tf_angular_variance" type="double" value="0.01"/>         <!-- Angular variance when odom tf is used to get odometry -->
+                <param name="odom_tf_linear_variance"  type="double" value="0.05"/>         <!-- Linear variance when odom tf is used to get odometry -->
+                <param name="visual_odometry"          type="bool"   value="false"/>        <!-- Better odometry provided by robot -->
+
+                <!-- Topic subscriptions -->
+                <param name="subscribe_rgb"   type="bool"   value="true"/>
+                <param name="subscribe_rgbd"  type="bool"   value="false"/> <!-- Not needed, camera already publishes synchronized feeds -->
+                <param name="subscribe_depth" type="bool"   value="true"/>
+                <param name="subscribe_scan"  type="bool"   value="true"/>
+                <param name="queue_size"      type="int"    value="100"/>
+
+                <!-- I/O topic remapping -->
+                <remap from="rgb/image"       to="/camera/color/image_raw"/>
+                <remap from="depth/image"     to="/camera/depth/image_raw"/>
+                <remap from="rgb/camera_info" to="/camera/color/camera_info"/>
+                <remap from="scan"            to="/scan"/>
+                <remap from="grid_map"        to="/map"/>
+                
+                <!-- Advanced RTAB-Map parameter tuning -->
+                <param name="Rtabmap/DetectionRate"         type="double"   value="1.0"/>       <!-- RTAB-Map mapping update rate (Hz) -->
+                <param name="Optimizer/Slam2D"              type="bool"     value="true"/>      <!-- Optimizer for 2D slam only -->
+                <param name="Reg/Strategy"                  type="int"      value="1"/>         <!-- 1 for lidar -->
+                <param name="Reg/Force3DoF"                 type="bool"     value="true"/>      <!-- 2D slam -->
+                <param name="Grid/Sensor"                   type="int"      value="0"/>         <!-- Occupancy grid from 0=laser scan -->
+                <param name="Grid/RangeMin"                 type="double"   value="0.0"/>       <!-- Minimal range from sensor (m) -->
+                <param name="Grid/RangeMax"                 type="double"   value="6.0"/>       <!-- Maximal range from sensor (m) -->
+                <param name="Grid/CellSize"                 type="double"   value="0.02"/>      <!-- Resolution of the occupancy grid (m) -->
+                <param name="GridGlobal/FullUpdate"         type="bool"     value="true"/>      <!-- Full map reconstruction -->
+                <param name="GridGlobal/UpdateError"        type="double"   value="0.1"/>       <!-- Graph changed detection error (m) -->
+                <param name="RGBD/NeighborLinkRefining"     type="bool"     value="true"/>      <!-- Odometry correction with scans -->
+                <param name="RGBD/OptimizeFromGraphEnd"     type="bool"     value="false"/>     <!-- Optimize graph from newest(true)/oldest(false) node -->
+                <param name="RGBD/ProximityPathMaxNeighbors" type="int"     value="10"/>        <!-- Proximity detection for laser scans -->
+            </node>
+        </group>
+
+        <!-- Exploration -->
+        <include file="$(find autonomous_exploration)/launch/base.launch">                                          <!-- Launch autonomous exploration system -->
+            <arg name="using_rtabmap" value="false" if="$(eval arg('slam_method') == 'gmapping')"/>
+        </include>
+        <include file="$(find object_detection_and_marking)/launch/base.launch"/>  <!-- Launch object detection and marking nodes -->
+    </group>
+
+    <!-- NOT TESTED, may need to add/change velodyne_pointcloud node params, RTAB-Map advanced params and probably more to properly integrate VLP-16 sensor -->
+    <group if="$(eval arg('robot_config') == 'jackal_astra_velodyne')">
+        <!-- Sensors -->
+        <include file="$(find realsense2_camera)/launch/rs_camera.launch"/>           <!-- Launch Orbbec Astra Pro camera -->
+        <include file="$(find velodyne_pointcloud)/launch/VLP16_points.launch">  <!-- Launch Velodyne VLP-16 LiDAR -->
+            <param name="rpm"       type="double"   value="600.0"/>
+            <param name="max_range" type="double"   value="30.0"/>
+        </include>
+
+        <!-- Transform links -->
+        <!-- TF links between Jackal front mount point and camera/LiDAR tf trees. Placed using CAD model info; camera tilted up by 5 deg (in radians) -->
+        <node pkg="tf" type="static_transform_publisher" name="front_mount_camera_link_tf" args="0.037 0 0.05125 0 -0.0872665 0 front_mount camera_link 100"/>
+        <node pkg="tf" type="static_transform_publisher" name="front_mount_velodyne_tf"    args="0 0 0.1294 0 0 0 front_mount velodyne 100"/>
+
+        <!-- SLAM -->
+        <include if="$(eval arg('slam_method') == 'gmapping')" file="$(find jackal_navigation)/launch/gmapping_demo.launch">
+            <arg name="scan_topic" value="/scan"/>
+        </include>
+
+        <group if="$(eval arg('slam_method') == 'rtabmap')" ns="rtabmap"> <!-- Launch RTAB-Map with some custom parameters and remapped topics -->
+            <node pkg="rtabmap_ros" type="rtabmap" name="rtabmap" output="screen" args="--delete_db_on_start">
+                <!-- Miscellaneous -->
+                <param name="database_path"   value="$(arg rtabmap_db_dir)/exploration_$(arg time_now).db"/>    <!-- Recording filepath -->
+                <param name="mkdir_tmp"       command="mkdir -m 777 -p $(arg rtabmap_db_dir)"/>                 <!-- Ensures rtabmap_db_dir is available -->
+                
+                <!-- Frame and odometry parameters -->
+                <param name="frame_id"                 type="string" value="base_link"/>    <!-- Origin tf frame for RTABmap -->
+                <param name="odom_frame_id"            type="string" value="odom"/>         <!-- Get odometry updates directly from odom tf -->
+                <param name="odom_tf_angular_variance" type="double" value="0.001"/>        <!-- Angular variance when odom tf is used to get odometry -->
+                <param name="odom_tf_linear_variance"  type="double" value="0.001"/>        <!-- Linear variance when odom tf is used to get odometry -->
+                <param name="visual_odometry"          type="bool"   value="false"/>        <!-- Better odometry provided by robot -->
+
+                <!-- Topic subscriptions -->
+                <param name="subscribe_rgb"         type="bool"   value="true"/>
+                <param name="subscribe_rgbd"        type="bool"   value="false"/> <!-- Not needed, camera already publishes synchronized feeds -->
+                <param name="subscribe_depth"       type="bool"   value="true"/>
+                <param name="subscribe_scan"        type="bool"   value="true"/>
+                <param name="subscribe_scan_cloud"  type="bool"   value="true"/>
+                <param name="queue_size"            type="int"    value="100"/>
+
+                <!-- I/O topic remapping -->
+                <remap from="rgb/image"       to="/camera/color/image_raw"/>
+                <remap from="depth/image"     to="/camera/depth/image_rect_raw"/>
+                <remap from="rgb/camera_info" to="/camera/color/camera_info"/>
+                <remap from="scan"            to="/scan"/>
+                <remap from="scan_cloud"      to="/velodyne_points"/>
+                <remap from="grid_map"        to="/map"/>
+                
+                <!-- Advanced RTAB-Map parameter tuning -->
+                <param name="Rtabmap/DetectionRate"         type="double"   value="1.0"/>       <!-- RTAB-Map mapping update rate (Hz) -->
+                <param name="Optimizer/Slam2D"              type="bool"     value="true"/>      <!-- Optimizer for 2D slam only -->
+                <param name="Reg/Strategy"                  type="int"      value="1"/>         <!-- 1 for lidar -->
+                <param name="Reg/Force3DoF"                 type="bool"     value="true"/>      <!-- 2D slam -->
+                <param name="Grid/Sensor"                   type="int"      value="0"/>         <!-- Occupancy grid from 0=laser scan -->
+                <param name="Grid/RangeMin"                 type="double"   value="0.0"/>       <!-- Minimal range from sensor (m) -->
+                <param name="Grid/RangeMax"                 type="double"   value="6.0"/>       <!-- Maximal range from sensor (m) -->
+                <param name="Grid/CellSize"                 type="double"   value="0.02"/>      <!-- Resolution of the occupancy grid (m) -->
+                <param name="GridGlobal/FullUpdate"         type="bool"     value="true"/>      <!-- Full map reconstruction -->
+                <param name="GridGlobal/UpdateError"        type="double"   value="0.1"/>       <!-- Graph changed detection error (m) -->
+                <param name="RGBD/NeighborLinkRefining"     type="bool"     value="true"/>      <!-- Odometry correction with scans -->
+                <param name="RGBD/OptimizeFromGraphEnd"     type="bool"     value="false"/>     <!-- Optimize graph from newest(true)/oldest(false) node -->
+                <param name="RGBD/ProximityPathMaxNeighbors" type="int"     value="10"/>        <!-- Proximity detection for laser scans -->
+            </node>
+        </group>
+
+        <!-- Exploration -->
+        <include file="$(find autonomous_exploration)/launch/base.launch">                                          <!-- Launch autonomous exploration system -->
+            <arg name="using_rtabmap" value="false" if="$(eval arg('slam_method') == 'gmapping')"/>
+        </include>
+        <include if="$(arg use_object_detection)" file="$(find object_detection_and_marking)/launch/base.launch"/>  <!-- Launch object detection and marking nodes -->
+    </group>
+</launch>

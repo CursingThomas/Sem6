@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="description" content="UGV JACKAL EXPLORER DASHBOARD">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>JACKAL UGV</title>
+
+
+<script type="text/javascript" src="easeljs.min.js"></script>
+<script type="text/javascript" src="eventemitter2.js"></script>
+<script type="text/javascript" src="roslib.min.js"></script>
+<script type="text/javascript" src="ros2d.js"></script>
+<script type="text/javascript" src="ros3d.js"></script>
+
+<script type="text/javascript" type="text/javascript">
+    /**
+     * Setup all visualization elements when the page is loaded.
+     */
+    function init() {
+      // Connect to ROS.
+      var ros = new ROSLIB.Ros({
+        url : 'ws://100.121.193.21:9090'
+      });
+  
+      let viewer = new ROS3D.Viewer({
+      divID : 'map',
+      width : 1200,
+      height : 750,
+      antialias : false,
+      intensity : 0.5,
+      cameraPose : {x : -1, y : 0, z : 20},
+      displayPanAndZoomFrame : true,
+      lineTypePanAndZoomFrame : true
+  });
+  
+  let tfClient = new ROSLIB.TFClient({
+      ros : ros,
+      angularThres : 0.01,
+      transThres : 0.01,
+      rate : 10.0,
+      fixedFrame : '/base_link'
+  });
+  
+  let mapClient = new ROS3D.OccupancyGridClient({
+      ros : ros,
+      rootObject : viewer.scene,
+      continuous : false,
+      opacity : 1
+  });
+}    
+</script>
+
+  <!-- CSS only -->  
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/5.0.0-alpha1/css/bootstrap.min.css">
+</head>
+
+
+<body onload="init()">
+
+  <nav class="navbar navbar-expand-lg py-3 navbar-dark bg-dark fixed-top">
+    <div class="container">
+      <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav ml-auto text-primary">
+          <li class="nav-item">
+            <a class="nav-link active" aria-current="page" href="https://www.torqvalue.com/'.$GLOBALS['lang'].'/index.php">Home</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link active" aria-current="page" href="https://www.torqvalue.com/'.$GLOBALS['lang'].'/brandspage.php">Brands</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link active" aria-current="page" href="https://www.torqvalue.com/'.$GLOBALS['lang'].'/FAQ.php">FAQ</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link active" aria-current="page" href="https://www.torqvalue.com/'.$GLOBALS['lang'].'/articles.php">Articles</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+<div class="pt-5 mt-4">
+
+</div>
+
+<div class="row">
+    <div class="col-md-4" style="height:750px;">
+      <div class="row" style="height:50%;">
+        <div class="col-md-12">
+          <div id="img"> <img src="http://100.121.193.21:8080/stream?topic=/camera/color/image_raw" height="375px"></img> </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-lg-6">
+          <p>B</p>
+        </div>
+        <div class="col-lg-6" >
+       
+        </div>
+      </div>
+    </div>
+    <div id= "x" class="col-md-8" style="height:750px;">
+      <div id="map"></div>
+    </div>
+  </div>
+<div id="zone_joystick" style="position: relative;"></div>
+<hr><!-- /signup form -->
+<!-- footer -->
+<div class="row py-3">
+  <div class="col-md-7 pl-5">
+  <ul class="nav">
+  <li class="nav-item">
+   <!-- Example single danger button -->
+   <div class="btn-group dropup">
+    <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+      Contact
+    </button>
+    <div class="dropdown-menu">
+      <a class="dropdown-item" href = "mailto: thschenk143@gmail.com">Email</a>
+      <a class="dropdown-item" href = "https://github.com/CursingThomas">Github</a>
+    </div>
+  </div>
+</li>
+</div>
+<div class="col-md text-md-right pt-1 pr-5">
+    <small>&copy; 2022 Thomas Schenk</small>
+  </div>
+  </div>
+</div><!-- /footer -->
