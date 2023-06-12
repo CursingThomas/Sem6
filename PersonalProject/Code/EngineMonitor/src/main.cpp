@@ -1,4 +1,5 @@
 #include <WiFi.h>
+#include <WiFiMulti.h>
 #include <HTTPClient.h>
 #include <RingBuf.h>
 
@@ -6,8 +7,6 @@
 
 String URL = "http://i466372.hera.fhict.nl/connect.php";
 
-const char* ssid = "Test"; 
-const char* password = "Test1234"; 
 Reading sensorReading;
 
 const char* ntpServer = "pool.ntp.org";
@@ -15,7 +14,15 @@ const long  gmtOffset_sec = 3600;
 const int   daylightOffset_sec = 3600;
 struct tm timeinfo;
 RingBuf<Reading, 1000> buffer;
+WiFiMulti wifiMulti;
 int retriesConnection = 0;
+
+void setupWifiCreds()
+{
+  wifiMulti.addAP("Internet", "TLE9009le");
+  wifiMulti.addAP("Test", "Test1234");
+  wifiMulti.addAP("ssid_from_AP_3", "your_password_for_AP_3");
+}
 
 void printLocalTime()
 {
@@ -31,19 +38,14 @@ void connectWiFi() {
   delay(1000);
   //This line hides the viewing of ESP as wifi hotspot
   WiFi.mode(WIFI_STA);
-  
-  WiFi.begin(ssid, password);
-  Serial.println("Connecting to WiFi");
-  
-for (int i = 0; i <= 10; i++) 
+  setupWifiCreds();
+  wifiMulti.run();
+
+  if (WiFi.status() != WL_CONNECTED)
   {
-    WiFi.begin(ssid, password);
-    if (WiFi.status() != WL_CONNECTED)
-    {
-      delay(500);
-      Serial.print(".");
-    }
+    Serial.println("No usable adresses were found");
   }
+
 }
 
 void setup() {
