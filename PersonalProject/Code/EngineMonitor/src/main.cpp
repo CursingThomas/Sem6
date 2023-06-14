@@ -19,7 +19,7 @@ int retriesConnection = 0;
 
 void setupWifiCreds()
 {
-  wifiMulti.addAP("Internet", "TLE9009le");
+  wifiMulti.addAP("Internet", "");
   wifiMulti.addAP("Test", "Test1234");
   wifiMulti.addAP("ssid_from_AP_3", "your_password_for_AP_3");
 }
